@@ -2,24 +2,24 @@
 (function (global, document) {
 
 
-	/**
+    /**
      * [from revealjs]
-	 * Extend object a with the properties of object b.
-	 * If there's a conflict, object b takes precedence.
-	 */
-	function extend(a, b) {
-		for (var i in b) {
-			a[i] = b[i];
-		}
-	}
+     * Extend object a with the properties of object b.
+     * If there's a conflict, object b takes precedence.
+     */
+    function extend(a, b) {
+        for (var i in b) {
+            a[i] = b[i];
+        }
+    }
 
-	/**
+    /**
      * [from revealjs]
-	 * Converts the target object to an array.
-	 */
-	function toArray( o ) {
-		return Array.prototype.slice.call( o );
-	}
+     * Converts the target object to an array.
+     */
+    function toArray( o ) {
+        return Array.prototype.slice.call( o );
+    }
 
     function SlideCue(time, slideIndex) {
         this.time = time;
@@ -88,20 +88,38 @@
         return slideCues;
     }
 
-    function setCueLength() {
-        var markers, markerLength, divs, slideCues, borderWidth;
+    function setCueLength(popcorn) {
+        var markers, markerLength, divs, slideCues, timeLength;
         slideCues = getSlideCues();
         markers = document.getElementById('markers');
-        borderWidth = 2;
-        markerLength = markers.offsetWidth / slideCues.length - borderWidth;
+        markerTotalLength = markers.offsetWidth;
+        var totalTime = popcorn.duration();
         divs = document.getElementsByClassName('cue');
         for (var i = 0; i < divs.length; i++) {
-            divs[i].setAttribute("style","width:" + markerLength + "px");
+            try {
+                timeLength = slideCues[i+1].time - slideCues[i].time;
+            } catch (e) {
+                timeLength = totalTime - slideCues[i].time;
+            }
+            var left = (slideCues[i].time/totalTime)*100;
+            markerLength = markerTotalLength * (timeLength/totalTime);
+            divs[i].setAttribute("style","width:" + markerLength + "px;");
         };
     }
 
     function onCueClick(cue, popcorn) {
        popcorn.currentTime(cue.time);
+    }
+
+    function onTimeUpdate() {
+        percentage = (this.currentTime/this.duration)*100;
+        var t=document.getElementById('markers');
+        col1 = "#abc";
+        col2 = "#e3e3e3";
+        t.style.background="-moz-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        t.style.background="-o-linear-gradient(left center,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        t.style.background="-webkit-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        t.style.background="linear-gradient(left center,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
     }
 
     // Use the audio timeupdates to drive existing slides.
@@ -115,6 +133,8 @@
         markers = document.getElementById('markers');
 
         popcorn = Popcorn(audio);
+
+        audio.addEventListener('timeupdate', onTimeUpdate);
 
         var i = 0;
         slideCues.forEach(function (cue) {
@@ -130,15 +150,22 @@
             popcorn.cue(i++, cue.time, function () {
                 transitionLock = true;
                 cue.focus();
-                var active = document.querySelector(".active");
-                if (active != null) active.classList.remove("active");
-                cue.div.classList.add("active");
                 transitionLock = false;
             });
         });
-        setCueLength();
 
-        window.onresize = setCueLength;
+        if (popcorn.readyState() > 0) {
+            setCueLength(popcorn);
+        } else{
+            audio.addEventListener('loadedmetadata', function(event) {
+                           return setCueLength.call(this, popcorn);
+                       });
+        };
+
+
+        window.onresize = function(event) {
+                        return setCueLength.call(this, popcorn);
+                    };
 
         // lock for preventing slidechanged event handler during timeupdate handler.
         // TODO using a mutex seems clunky.
