@@ -71,6 +71,27 @@
         return parseFloat(tag.attributes['data-bccue'].value);
     }
 
+    function seconds2time (seconds) {
+        var hours   = Math.floor(seconds / 3600);
+        var minutes = Math.floor((seconds - (hours * 3600)) / 60);
+        var seconds = Math.floor(seconds - (hours * 3600) - (minutes * 60));
+        var time = "";
+        if (hours != 0) {
+          time = hours+":";
+        }
+        if (minutes != 0 || time !== "") {
+          minutes = (minutes < 10 && time !== "") ? "0"+minutes : String(minutes);
+          time += minutes+":";
+        }
+        if (time === "") {
+          time = "0:"+seconds;
+        }
+        else {
+          time += (seconds < 10) ? "0"+seconds : String(seconds);
+        }
+        return time;
+    }
+
     function getSlideCues() {
         var slides, slideCues, cue, cueTime, subCues;
         // Get a list of the slides and their cue times.
@@ -92,10 +113,21 @@
         var markers, markerLength, divs, slideCues, timeLength;
         slideCues = getSlideCues();
         markers = document.getElementById('markers');
-        markerTotalLength = markers.offsetWidth;
+        audioControls = document.getElementById('audio-controls');
+        playPause = document.getElementById('play-pause');
+        timeDiv = document.getElementById('time');
+        mute = document.getElementById('mute');
+        volumeBar = document.getElementById('volume-bar');
+        markerTotalLength = audioControls.offsetWidth - (
+            playPause.offsetWidth + timeDiv.offsetWidth +
+            volumeBar.offsetWidth + mute.offsetWidth + 50)
+        markers.setAttribute(
+            "style","width:" + markerTotalLength + "px;");
+        var sum = 0;
         var totalTime = popcorn.duration();
         divs = document.getElementsByClassName('cue');
-        for (var i = 0; i < divs.length; i++) {
+        var length = divs.length;
+        for (var i = 0; i < length; i++) {
             try {
                 timeLength = slideCues[i+1].time - slideCues[i].time;
             } catch (e) {
@@ -103,7 +135,17 @@
             }
             var left = (slideCues[i].time/totalTime)*100;
             markerLength = markerTotalLength * (timeLength/totalTime);
-            divs[i].setAttribute("style","width:" + markerLength + "px;");
+            // Firefox workaround. Somehow sum is always infinitesimally
+            // greater that the actual width.
+            if (i == length-1) {
+                var x = Math.floor(markerTotalLength-sum);
+                divs[i].setAttribute(
+                    "style","width:" + x + "px;")
+            } else {
+                divs[i].setAttribute(
+                    "style","width:" + markerLength + "px;");
+            }
+            sum = sum + markerLength;
         };
     }
 
@@ -113,13 +155,15 @@
 
     function onTimeUpdate() {
         percentage = (this.currentTime/this.duration)*100;
-        var t=document.getElementById('markers');
+        var markers = document.getElementById('markers');
+        var currentTimeSpan = document.getElementById("current-time");
+        currentTimeSpan.innerHTML = seconds2time(this.currentTime);
         col1 = "#abc";
         col2 = "#e3e3e3";
-        t.style.background="-moz-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        t.style.background="-o-linear-gradient(left center,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        t.style.background="-webkit-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
-        t.style.background="linear-gradient(left center,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        markers.style.background = "-moz-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        markers.style.background = "-o-linear-gradient(left center,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        markers.style.background = "-webkit-linear-gradient(left,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
+        markers.style.background = "linear-gradient(left center,"+col1+" "+percentage+"%, "+col2+" "+percentage+"%)";
     }
 
     // Use the audio timeupdates to drive existing slides.
@@ -132,9 +176,44 @@
         audio = document.getElementById('browsercast-audio');
         markers = document.getElementById('markers');
 
+        // Buttons
+        var playButton = document.getElementById("play-pause");
+        var muteButton = document.getElementById("mute");
+        var volumeBar = document.getElementById("volume-bar");
+        var durationSpan = document.getElementById("duration");
+
         popcorn = Popcorn(audio);
 
         audio.addEventListener('timeupdate', onTimeUpdate);
+        // Event listener for the play/pause button
+        playButton.addEventListener("click", function() {
+            if (audio.paused == true) {
+                audio.play();
+                playButton.classList.remove('play');
+                playButton.classList.add('pause');
+            } else {
+                audio.pause();
+                playButton.classList.remove('pause');
+                playButton.classList.add('play');
+            }
+        });
+        // Event listener for the mute button
+        muteButton.addEventListener("click", function() {
+            if (audio.muted == false) {
+                audio.muted = true;
+                muteButton.classList.remove('mute');
+                muteButton.classList.add('unmute');;
+            } else {
+                audio.muted = false;
+                muteButton.classList.remove('unmute');
+                muteButton.classList.add('mute');
+            }
+        });
+
+        // Event listener for the volume bar
+        volumeBar.addEventListener("change", function() {
+            audio.volume = volumeBar.value;
+        });
 
         var i = 0;
         slideCues.forEach(function (cue) {
@@ -143,8 +222,8 @@
             div.setAttribute('data', "time:"+cue.time);
             cue.div = div;
             div.onclick = function(event) {
-                        return onCueClick.call(this, cue, popcorn);
-                    };
+                return onCueClick.call(this, cue, popcorn);
+            };
             markers.appendChild(div);
 
             popcorn.cue(i++, cue.time, function () {
@@ -155,17 +234,19 @@
         });
 
         if (popcorn.readyState() > 0) {
+            durationSpan.innerHTML = seconds2time(popcorn.duration());
             setCueLength(popcorn);
         } else{
             audio.addEventListener('loadedmetadata', function(event) {
-                           return setCueLength.call(this, popcorn);
-                       });
+                durationSpan.innerHTML = seconds2time(popcorn.duration());
+                return setCueLength.call(this, popcorn);
+            });
         };
 
 
         window.onresize = function(event) {
-                        return setCueLength.call(this, popcorn);
-                    };
+            return setCueLength.call(this, popcorn);
+        };
 
         // lock for preventing slidechanged event handler during timeupdate handler.
         // TODO using a mutex seems clunky.
